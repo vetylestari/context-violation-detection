@@ -3,6 +3,8 @@
 import psycopg2
 from psycopg2.extras import execute_values
 from decouple import config
+from project.context_violation_detection.db.fetch import get_connection
+from datetime import datetime
 
 # Ambil koneksi dari environment
 def get_connection():
@@ -14,11 +16,22 @@ def get_connection():
         password=config("DB_PASSWORD")
     )
 
-# Insert banyak data sekaligus
-def insert_violations(records):
+def insert_violations(results: list[dict]):
+    records = [
+        (
+            r["product_id"],
+            r["product_name"],
+            r["keyword"],
+            r["violation"],
+            r["reason"],
+            datetime.utcnow()
+        )
+        for r in results if r.get("violation") is not None  # exclude only failed requests
+    ]
+
     query = """
         INSERT INTO machine_learning.rns_product_violation (
-            product_id, product_name, keyword, is_violation
+            product_id, product_name, keyword, is_violation, reason, date_in
         ) VALUES %s
         ON CONFLICT (product_id, keyword) DO NOTHING
     """
