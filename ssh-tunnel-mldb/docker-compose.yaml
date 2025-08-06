@@ -1,0 +1,21 @@
+services:
+  sshtunnel:
+    container_name: sshtunnel-mldb
+    build: .
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: '100MB'
+    ports:
+      - "${TUNNEL_LOCAL_PORT}:${TUNNEL_LOCAL_PORT}"
+    environment:
+      - KEY=/etc/.ssh/key.pem
+      - TUNNEL_HOST=${TUNNEL_SERVER_USERNAME}@${TUNNEL_SERVER_HOST}
+      - TUNNEL_PORT=${TUNNEL_SERVER_PORT}
+      - LOCAL_PORT=${TUNNEL_LOCAL_PORT}
+      - REMOTE_HOST=${TUNNEL_REMOTE_HOST}
+      - REMOTE_PORT=${TUNNEL_REMOTE_PORT}
+    restart: always
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

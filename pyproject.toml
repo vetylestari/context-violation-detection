@@ -1,0 +1,28 @@
+[tool.poetry]
+name = "context-violation-detector"
+version = "0.1.0"
+description = "Detect forbidden words in product names using context-aware LLM"
+authors = ["Vety Bhakti Lestari <vety.lestari@renos.id>"]
+readme = "README.md"
+packages = [{include = "project"}]
+
+[tool.poetry.dependencies]
+python = ">=3.10,<=3.13"
+openai = "^1.98.0"
+psycopg2-binary = "^2.9.10"
+python-decouple = "^3.8"
+pandas = "^2.3.1"
+tqdm = "^4.67.1"
+sqlalchemy = "^2.0.42"
+python-dotenv = "^1.1.1"
+asyncpg = "^0.30.0"
+fastapi = "^0.116.1"
+uvicorn = {extras = ["standard"], version = "^0.35.0"}
+jupyter = "^1.1.1"
+ipykernel = "^6.29.4"
+pyarrow = "^21.0.0"
+fastparquet = "^2024.11.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

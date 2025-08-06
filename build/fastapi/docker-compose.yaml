@@ -1,0 +1,86 @@
+name: ${PROJECT_NAME}
+
+services:
+  prepare_data:
+    build: .
+    depends_on:
+      - api
+    networks:
+      - netw00
+    env_file: "./.env/"
+    volumes:
+      - ./project:/code/project
+    command: "poetry run python project/context_violation_detection/service/prepare_data.py"
+
+  api:
+    build: .
+    deploy:
+      mode: replicated
+      replicas: 1
+      resources:
+        limits:
+          cpus: ${CONTAINER_DEPLOY_RESOURCES_LIMITS_CPUS}
+          memory: ${CONTAINER_DEPLOY_RESOURCES_LIMITS_MEMORY}
+    shm_size: ${CONTAINER_SHM_SIZE}
+    expose: 
+      - '8080'
+    networks:
+      - netw00
+    volumes:
+      - ./project:/code/project
+    env_file: "./.env/"
+    command: "poetry run uvicorn handler_fastapi:app --host 0.0.0.0 --port 8080"
+
+  nginx:
+    container_name: ${PROJECT_NAME}-nginx
+    image: nginx:latest
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - api
+    ports:
+      - ${CONTAINER_PORT}:4000
+    networks:
+      - netw00
+
+networks:
+  netw00:
+    name: ${CONTAINER_NETWORK_NAME}
+    driver: bridge
+
+# name: ${PROJECT_NAME}
+
+# services:
+#   api:
+#     build: .
+#     deploy:
+#       mode: replicated
+#       replicas: 1
+#       resources:
+#         limits:
+#           cpus: ${CONTAINER_DEPLOY_RESOURCES_LIMITS_CPUS}
+#           memory: ${CONTAINER_DEPLOY_RESOURCES_LIMITS_MEMORY}
+#     shm_size: ${CONTAINER_SHM_SIZE}
+#     expose: 
+#       - '8080'
+#     networks:
+#       - netw00
+#     volumes:
+#       - ./project:/code/project
+#     env_file: "./.env/"
+#     command: "poetry run uvicorn handler_fastapi:app --host 0.0.0.0 --port 8080"
+#   nginx:
+#     container_name: ${PROJECT_NAME}-nginx
+#     image: nginx:latest
+#     volumes:
+#       - ./nginx.conf:/etc/nginx/nginx.conf:ro
+#     depends_on:
+#       - api
+#     ports:
+#       - ${CONTAINER_PORT}:4000
+#     networks:
+#       - netw00
+# networks:
+#   netw00:
+#     name: ${CONTAINER_NETWORK_NAME}
+#     driver: bridge
