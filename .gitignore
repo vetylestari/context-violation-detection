@@ -1,2 +1,4 @@
 .env
 project/context_violation_detection/sample_data
+project/context_violation_detection/data/parquet
+project/context_violation_detection/notebook
