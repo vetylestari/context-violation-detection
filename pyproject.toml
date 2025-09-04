@@ -22,6 +22,8 @@ jupyter = "^1.1.1"
 ipykernel = "^6.29.4"
 pyarrow = "^21.0.0"
 fastparquet = "^2024.11.0"
+aiolimiter = "^1.2.1"
+aiohttp = "^3.12.15"
 
 [build-system]
 requires = ["poetry-core"]

@@ -2,8 +2,8 @@ from typing import List, Dict
 from pathlib import Path
 import pandas as pd
 
-from project.context_violation_detection.model.groq_checker import run_all_checks
-from project.context_violation_detection.service.prepare_data import main as prepare_parquet
+from context_violation_detection.model.groq_checker import run_all_checks
+from context_violation_detection.service.prepare_data import main as prepare_parquet
 
 PARQUET_DIR = Path("data/parquet")
 

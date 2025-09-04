@@ -1,1 +1,1 @@
-from project.context_violation_detection.service import api
+from context_violation_detection.service import api

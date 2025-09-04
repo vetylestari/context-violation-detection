@@ -52,11 +52,11 @@
 #     main()
     
 #----------------------------------------------------------------------------------------
-
+# prepare data
 
 import pandas as pd
 from pathlib import Path
-from project.context_violation_detection.db.fetch import (
+from context_violation_detection.db.fetch import (
     fetch_products,
     fetch_forbidden_words,
     save_to_parquet,

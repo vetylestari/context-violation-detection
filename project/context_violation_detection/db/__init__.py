@@ -1,1 +1,1 @@
-from project.context_violation_detection.db import fetch
+from context_violation_detection.db import fetch, insert

@@ -11,7 +11,9 @@ ENV PYTHONFAULTHANDLER=1 \
     POETRY_CACHE_DIR='/var/cache/pypoetry' \
     POETRY_HOME='/usr/local' \
     PATH="/usr/local/bin:$PATH"
-    
+
+ENV PYTHONPATH=/code
+
 # Install system deps
 RUN apt-get update && apt-get upgrade -y && \
     apt-get install --no-install-recommends -y curl libpq5 && \
@@ -26,14 +28,11 @@ WORKDIR /code
 # Copy pyproject files first to leverage Docker layer cache
 COPY pyproject.toml poetry.lock README.md handler_fastapi.py /code/
 
-# Create necessary folders first to avoid "missing package" errors
-RUN mkdir -p /code/project && touch /code/project/__init__.py
-
-# Pre-install attempt with retries
+# Install dependencies
 RUN for i in 1 2 3; do poetry install --no-interaction --no-ansi --only main && break || sleep 15; done
 
-# Then copy the actual code (after dependencies are installed)
-COPY project /code/project/
+# Copy project code
+COPY project /code/
 
-# Run app
-# CMD ["poetry", "run", "uvicorn", "handler_fastapi:app", "--host", "0.0.0.0", "--port", "8000"]    
+# Just to be safe, ensure package init exists
+RUN touch /code/context_violation_detection/__init__.py

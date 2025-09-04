@@ -1,115 +1,299 @@
-# import openai
+# # import openai
+# # from project.context_violation_detection.config.settings import GROQ_API_KEY
+
+# # openai.api_key = GROQ_API_KEY
+# # openai.api_base = "https://api.groq.com/openai/v1"  # Groq endpoint
+
+# # def check_violation(product_name: str, forbidden_words: list[str]) -> bool:
+# #     prompt = f"""
+# #     You are a content validator. Your job is to detect if a product name violates content policy by containing forbidden words in a harmful or inappropriate context.
+    
+# #     Forbidden words: {", ".join(forbidden_words)}
+    
+# #     Example (does NOT violate): 'kandang anjing'
+# #     Example (DOES violate): 'jual bokep murah'
+
+# #     Product name: '{product_name}'
+    
+# #     Does it violate the content policy? Answer with "YES" or "NO" only.
+# #     """
+
+# #     response = openai.ChatCompletion.create(
+# #         model="mixtral-8x7b-32768",
+# #         messages=[{"role": "user", "content": prompt}],
+# #         temperature=0.1,
+# #         max_tokens=3,
+# #     )
+
+# #     return "YES" in response.choices[0].message["content"].upper()
+
+# import asyncio
+# from itertools import product
+# import json
 # from project.context_violation_detection.config.settings import GROQ_API_KEY
+# from context_violation_detection.db.insert import insert_violations
+# from openai import OpenAI
+# from decouple import config
 
-# openai.api_key = GROQ_API_KEY
-# openai.api_base = "https://api.groq.com/openai/v1"  # Groq endpoint
+# client = OpenAI(
+#     api_key=config("GROQ_API_KEY"),
+#     base_url="https://api.groq.com/openai/v1"
+# )
 
-# def check_violation(product_name: str, forbidden_words: list[str]) -> bool:
-#     prompt = f"""
-#     You are a content validator. Your job is to detect if a product name violates content policy by containing forbidden words in a harmful or inappropriate context.
+# # Max concurrent Groq requests
+# semaphore = asyncio.Semaphore(5)  # adjust this based on testing
+# def build_prompt(product_id: int, product_name: str, keywords: list[str]) -> dict:
+#     return f"""
+#         Kamu adalah sistem moderasi produk berbasis konteks.
+
+#         Tugas:
+#         - Periksa apakah nama produk berikut mengandung salah satu kata dari daftar forbidden.
+#         - Jika ada kata yang cocok, tentukan apakah konteks penggunaannya melanggar atau tidak.
+#         - Jika ada kata yang cocok tapi konteksnya normal/aman, tetap tampilkan di matched_keywords tapi is_violation = false.
+
+#         Aturan:
+#         1. Jika kata digunakan dalam konteks normal (misalnya nama produk, deskripsi fungsional), maka "is_violation" = false.
+#         2. Jika kata digunakan sebagai umpatan, penghinaan, atau dalam konteks negatif, maka "is_violation" = true.
+
+#         Format output JSON (wajib sesuai):
+#         {{
+#         "product_id": {product_id},
+#         "product_name": "{product_name}",
+#         "matched_keywords": ["keyword1", "keyword2"],
+#         "is_violation": true
+#         }}
+
+#         Sekarang evaluasi produk berikut:
+
+#         product_name: "{product_name}"
+#         forbidden_keywords: {keywords}
+# """.strip()
+
+
+# async def check_violation(product_id: int, product_name: str, keywords: list[str]) -> dict:
+#     prompt = build_prompt(product_id, product_name, keywords)
+#     try:
+#         loop = asyncio.get_event_loop()
+#         response = await loop.run_in_executor(
+#             None,
+#             lambda: client.chat.completions.create(
+#                 model="llama-3.1-8b-instant",
+#                 messages=[
+#                     {"role": "system", "content": "Kamu adalah sistem validasi forbidden word."},
+#                     {"role": "user", "content": prompt}
+#                 ],
+#                 temperature=0
+#             )
+#         )
+#         content = response.choices[0].message.content.strip()
+#         print(f"[DEBUG] Raw LLM response for {product_name}: {content}")
+
+#         result = json.loads(content)
+#         return {
+#             "product_id": product_id,
+#             "product_name": product_name,
+#             "matched_keywords": result.get("matched_keywords", []),
+#             "is_violation": result.get("is_violation", False),
+#         }
+
+#     except Exception as e:
+#         return {
+#             "product_id": product_id,
+#             "product_name": product_name,
+#             "matched_keywords": [],
+#             "is_violation": False,
+#             "error": str(e)
+#         }
+
+
+
+# def format_results_for_db(results: list[dict]) -> list[tuple]:
+#     formatted = []
+#     for r in results:
+#         formatted.append((
+#             r["product_id"],
+#             r["product_name"],
+#             r["keyword"],
+#             r["is_violation"]
+#         ))
+#     return formatted
+
+
+# async def run_all_checks(products: list[tuple[int, str]], keywords: list[str]) -> list[dict]:
+#     tasks = []
+#     for product_id, product_name in products:
+#         tasks.append(check_violation(product_id, product_name, keywords))  # <– sekali per produk
     
-#     Forbidden words: {", ".join(forbidden_words)}
-    
-#     Example (does NOT violate): 'kandang anjing'
-#     Example (DOES violate): 'jual bokep murah'
+#     results = await asyncio.gather(*tasks)
 
-#     Product name: '{product_name}'
-    
-#     Does it violate the content policy? Answer with "YES" or "NO" only.
-#     """
+#     # format untuk DB
+#     formatted_results = [
+#         (r["product_id"], r["product_name"], ",".join(r["matched_keywords"]), r["is_violation"])
+#         for r in results
+#     ]
 
-#     response = openai.ChatCompletion.create(
-#         model="mixtral-8x7b-32768",
-#         messages=[{"role": "user", "content": prompt}],
-#         temperature=0.1,
-#         max_tokens=3,
-#     )
+#     if formatted_results:
+#         insert_violations(formatted_results)
 
-#     return "YES" in response.choices[0].message["content"].upper()
+#     return results
 
-import openai
 import asyncio
 import json
 from project.context_violation_detection.config.settings import GROQ_API_KEY
+from context_violation_detection.db.insert import insert_violations
+from openai import OpenAI
+from decouple import config
 
-openai.api_key = GROQ_API_KEY
-openai.api_base = "https://api.groq.com/openai/v1"
+client = OpenAI(
+    api_key=config("GROQ_API_KEY"),
+    base_url="https://api.groq.com/openai/v1"
+)
 
-# Max concurrent Groq requests
-semaphore = asyncio.Semaphore(5)  # adjust this based on testing
-
-def build_prompt(product_name: str, keyword: str) -> str:
+# === Prompt Builder ===
+def build_prompt(product_name: str, keywords: list[str]) -> str:
     return f"""
-            You are a content validator for an online marketplace.
+        Kamu adalah sistem moderasi produk berbasis konteks.
 
-            Your job is to determine whether a product name contains the given forbidden keyword in a **harmful, inappropriate, or policy-violating context**.
+        Tugas:
+        - Periksa apakah nama produk berikut mengandung salah satu kata dari daftar forbidden.
+        - Jika ada kata yang cocok, tentukan apakah konteks penggunaannya melanggar atau tidak.
+        - Jika ada kata yang cocok tapi konteksnya normal/aman, tetap tampilkan di matched_keywords tapi is_violation = false.
 
-            You will be given:
-            - A product name
-            - A forbidden keyword
+        Aturan:
+        1. Jika kata digunakan dalam konteks normal (misalnya bagian dari nama produk, deskripsi fungsional, atau kode model), maka "is_violation" = false.
+        2. Jika kata digunakan sebagai umpatan, penghinaan, atau indikasi barang palsu/ilegal/negatif, maka "is_violation" = true.
+        3. Abaikan kecocokan palsu yang hanya substring dari kata lain (contoh: "premium" tidak dianggap "remi", "KWD155HC" tidak dianggap "kw").
+        4. Hanya beri is_violation = true bila benar-benar ada konteks pelanggaran.
+        5. Utamakan analisis makna keseluruhan kalimat, jangan hanya mencocokkan kata secara literal (contoh: "pembunuh virus" tidak dianggap "pembunuh" karena konteksnya tidak mengandung kekerasan atau tindakan membahayakan).
 
-            Respond in the following JSON format:
-            {{
-            "is_violation": true or false,
-            "reason": "short explanation why it is or is not a violation"
-            }}
+        Format output JSON (wajib sesuai):
+        {
+            "product_name": "{product_name}",
+            "matched_keywords": ["keyword1", "keyword2"],
+            "is_violation": true/false
+        }
 
-            Examples:
-            - Product name: "kandang anjing", keyword: "anjing" → {{ "is_violation": false, "reason": "Used in a neutral context" }}
-            - Product name: "jual video bokep murah", keyword: "bokep" → {{ "is_violation": true, "reason": "Contains explicit content" }}
+        Sekarang evaluasi produk berikut:
 
-            Now evaluate:
-            - Product name: "{product_name}"
-            - Forbidden keyword: "{keyword}"
-        """.strip()
+        product_name: "{product_name}"
+        forbidden_keywords: {keywords}
+    """.strip()
 
-import json
+# === Check Violation ===
+# async def check_violation(product_id: int, product_name: str, keywords: list[str]) -> dict:
+#     prompt = build_prompt(product_name, keywords)
 
-async def check_violation(product_id: str, product_name: str, keyword: str) -> dict:
-    prompt = f"""
-You are a content policy checker. Your job is to evaluate whether the given product name contains the keyword in a potentially inappropriate or policy-violating context.
+#     try:
+#         loop = asyncio.get_event_loop()
+#         response = await loop.run_in_executor(
+#             None,
+#             lambda: client.chat.completions.create(
+#                 model="llama-3.1-8b-instant",
+#                 messages=[
+#                     {"role": "system", "content": "Kamu adalah sistem validasi forbidden word."},
+#                     {"role": "user", "content": prompt}
+#                 ],
+#                 temperature=0
+#             )
+#         )
 
-Product name: "{product_name}"
-Keyword: "{keyword}"
+#         content = response.choices[0].message.content.strip()
+#         print(f"[DEBUG] Raw LLM response for {product_name}: {content}")
 
-Respond in JSON format:
-{{
-  "is_violation": true or false,
-  "reason": "short reason why or why not"
-}}
-""".strip()
+#         try:
+#             result = json.loads(content)
+#         except json.JSONDecodeError:
+#             # fallback kalau gak valid JSON
+#             result = {"matched_keywords": [], "is_violation": False}
 
-    async with semaphore:
-        try:
-            response = await openai.ChatCompletion.acreate(
-                model="mixtral-8x7b-32768",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,
-                max_tokens=100,
+#         return {
+#             "product_id": product_id,
+#             "product_name": product_name,
+#             "matched_keywords": result.get("matched_keywords", []),
+#             "is_violation": result.get("is_violation", False)
+#         }
+
+#     except Exception as e:
+#         return {
+#             "product_id": product_id,
+#             "product_name": product_name,
+#             "matched_keywords": [],
+#             "is_violation": False,
+#             "error": str(e)
+#         }
+
+async def check_violation(product_id: int, product_name: str, keywords: list[str]) -> dict:
+    prompt = build_prompt(product_name, keywords)
+
+    try:
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: client.chat.completions.create(
+                model="llama-3.1-8b-instant",
+                messages=[
+                    {"role": "system", "content": "Kamu adalah sistem validasi forbidden word."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0
             )
-            content = response.choices[0].message["content"].strip()
+        )
+
+        content = response.choices[0].message.content.strip()
+        print(f"[DEBUG] Raw LLM response for {product_name}: {content}")
+
+        try:
             result = json.loads(content)
+        except json.JSONDecodeError:
+            # fallback kalau gak valid JSON
+            result = {"matched_keywords": [], "is_violation": False}
 
-            return {
-                "product_id": product_id,
-                "product_name": product_name,
-                "keyword": keyword,
-                "violation": result.get("is_violation", False),
-                "reason": result.get("reason", "")
-            }
-        except Exception as e:
-            return {
-                "product_id": product_id,
-                "product_name": product_name,
-                "keyword": keyword,
-                "violation": None,
-                "reason": f"LLM ERROR: {str(e)}"
-            }
+        # --- Post-process safety rules ---
+        matched = result.get("matched_keywords", [])
+        violation = result.get("is_violation", False)
 
+        safe_patterns = [
+            ("remi", "premium"),      # "remi" dalam "premium"
+            ("kw", "kwd"),            # "kw" dalam "KWD155HC"
+            ("pembunuh", "virus"),    # "pembunuh" dalam "pembunuh virus"
+        ]
+
+        for kw in matched:
+            pname_lower = product_name.lower()
+            for bad, safe in safe_patterns:
+                if kw == bad and safe in pname_lower:
+                    print(f"[SAFE_RULE] Override: {kw} dianggap aman di {product_name}")
+                    violation = False
+
+        return {
+            "product_id": product_id,
+            "product_name": product_name,
+            "matched_keywords": matched,
+            "is_violation": violation
+        }
+
+    except Exception as e:
+        return {
+            "product_id": product_id,
+            "product_name": product_name,
+            "matched_keywords": [],
+            "is_violation": False,
+            "error": str(e)
+        }
+
+
+# === Run All Checks ===
 async def run_all_checks(products: list[tuple[int, str]], keywords: list[str]) -> list[dict]:
-    tasks = []
-    for product_id, product_name in products:
-        for keyword in keywords:
-            tasks.append(check_violation(product_id, product_name, keyword))
+    tasks = [check_violation(product_id, product_name, keywords) for product_id, product_name in products]
     results = await asyncio.gather(*tasks)
+
+    # format untuk DB
+    formatted_results = [
+        (r["product_id"], r["product_name"], ",".join(r["matched_keywords"]), r["is_violation"])
+        for r in results
+    ]
+
+    if formatted_results:
+        insert_violations(formatted_results)
+
     return results
